@@ -1228,9 +1228,7 @@ static void ieee80211_chswitch_post_beacon(struct ieee80211_sub_if_data *sdata)
 		return;
 	}
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 94))
-	cfg80211_ch_switch_notify(sdata->dev, &sdata->reserved_chandef, 0, 0);
-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0))
 	cfg80211_ch_switch_notify(sdata->dev, &sdata->reserved_chandef, 0);
 #else
 	cfg80211_ch_switch_notify(sdata->dev, &sdata->reserved_chandef);
@@ -1420,11 +1418,8 @@ ieee80211_sta_process_chanswitch(struct ieee80211_sub_if_data *sdata,
 					  IEEE80211_QUEUE_STOP_REASON_CSA);
 	mutex_unlock(&local->mtx);
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 94))
-	cfg80211_ch_switch_started_notify(sdata->dev, &csa_ie.chandef, 0,
-					  csa_ie.count, 0, 0);
-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
-	cfg80211_ch_switch_started_notify(sdata->dev, &csa_ie.chandef, 0,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+	cfg80211_ch_switch_started_notify(sdata->dev, &csa_ie.chandef,
 					  csa_ie.count, 0);
 #else
 	cfg80211_ch_switch_started_notify(sdata->dev, &csa_ie.chandef,
@@ -2905,17 +2900,8 @@ static void ieee80211_destroy_assoc_data(struct ieee80211_sub_if_data *sdata,
 		ieee80211_vif_release_channel(sdata);
 		mutex_unlock(&sdata->local->mtx);
 
-		if (abandon) {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 78))
-			struct cfg80211_assoc_failure data = {
-				.bss[0] = assoc_data->bss,
-			};
-
-			cfg80211_assoc_failure(sdata->dev, &data);
-#else
+		if (abandon)
 			cfg80211_abandon_assoc(sdata->dev, assoc_data->bss);
-#endif
-		}
 	}
 
 	kfree(assoc_data);
@@ -3635,17 +3621,11 @@ static void ieee80211_rx_mgmt_assoc_resp(struct ieee80211_sub_if_data *sdata,
 		.type = MLME_EVENT,
 		.u.mlme.data = ASSOC_EVENT,
 	};
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 78))
-	struct cfg80211_rx_assoc_resp resp = {
-		.uapsd_queues = -1,
-	};
-#endif
 
 	sdata_assert_lock(sdata);
 
 	if (!assoc_data)
 		return;
-
 	if (!ether_addr_equal(assoc_data->bss->bssid, mgmt->bssid))
 		return;
 
@@ -3703,17 +3683,8 @@ static void ieee80211_rx_mgmt_assoc_resp(struct ieee80211_sub_if_data *sdata,
 	} else {
 		if (!ieee80211_assoc_success(sdata, bss, mgmt, len)) {
 			/* oops -- internal error -- send timeout for now */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 78))
-			struct cfg80211_assoc_failure data = {
-				.timeout = true,
-				.bss[0] = bss,
-			};
-			ieee80211_destroy_assoc_data(sdata, false, false);
-			cfg80211_assoc_failure(sdata->dev, &data);
-#else
 			ieee80211_destroy_assoc_data(sdata, false, false);
 			cfg80211_assoc_timeout(sdata->dev, bss);
-#endif
 			return;
 		}
 		event.u.mlme.status = MLME_SUCCESS;
@@ -3734,17 +3705,8 @@ static void ieee80211_rx_mgmt_assoc_resp(struct ieee80211_sub_if_data *sdata,
 				uapsd_queues |= ieee80211_ac_to_qos_mask[ac];
 	}
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 78))
-	resp.links[0].bss = bss;
-	resp.buf = (u8 *)mgmt;
-	resp.len = len;
-	resp.req_ies = ifmgd->assoc_req_ies;
-	resp.req_ies_len = ifmgd->assoc_req_ies_len;
-	cfg80211_rx_assoc_resp(sdata->dev, &resp);
-#else
 	cfg80211_rx_assoc_resp(sdata->dev, bss, (u8 *)mgmt, len, uapsd_queues,
-						   ifmgd->assoc_req_ies, ifmgd->assoc_req_ies_len);
-#endif
+			       ifmgd->assoc_req_ies, ifmgd->assoc_req_ies_len);
 }
 
 static void ieee80211_rx_bss_info(struct ieee80211_sub_if_data *sdata,
@@ -4498,17 +4460,8 @@ void ieee80211_sta_work(struct ieee80211_sub_if_data *sdata)
 				.u.mlme.status = MLME_TIMEOUT,
 			};
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 78))
-			struct cfg80211_assoc_failure data = {
-				.timeout = true,
-				.bss[0] = bss,
-			};
-			ieee80211_destroy_assoc_data(sdata, false, false);
-			cfg80211_assoc_failure(sdata->dev, &data);
-#else
 			ieee80211_destroy_assoc_data(sdata, false, false);
 			cfg80211_assoc_timeout(sdata->dev, bss);
-#endif
 			drv_event_callback(sdata->local, sdata, &event);
 		}
 	} else if (ifmgd->assoc_data && ifmgd->assoc_data->timeout_started)
@@ -5743,11 +5696,6 @@ int ieee80211_mgd_disassoc(struct ieee80211_sub_if_data *sdata,
 	u8 bssid[ETH_ALEN];
 	u8 frame_buf[IEEE80211_DEAUTH_FRAME_LEN];
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 78))
-	if (!ifmgd->associated ||
-	    memcmp(ifmgd->associated->bssid, req->ap_addr, ETH_ALEN))
-		return -ENOTCONN;
-#else
 	/*
 	 * cfg80211 should catch this ... but it's racy since
 	 * we can receive a disassoc frame, process it, hand it
@@ -5756,22 +5704,12 @@ int ieee80211_mgd_disassoc(struct ieee80211_sub_if_data *sdata,
 	 */
 	if (ifmgd->associated != req->bss)
 		return -ENOLINK;
-#endif
 
 	sdata_info(sdata,
 		   "disassociating from %pM by local choice (Reason: %u=%s)\n",
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 78))
-		   req->ap_addr,
-#else
-		   req->bss->bssid,
-#endif
-		   req->reason_code, ieee80211_get_reason_code_string(req->reason_code));
+		   req->bss->bssid, req->reason_code, ieee80211_get_reason_code_string(req->reason_code));
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 78))
-	memcpy(bssid, req->ap_addr, ETH_ALEN);
-#else
 	memcpy(bssid, req->bss->bssid, ETH_ALEN);
-#endif
 	ieee80211_set_disassoc(sdata, IEEE80211_STYPE_DISASSOC,
 			       req->reason_code, !req->local_state_change,
 			       frame_buf);
@@ -5801,17 +5739,8 @@ void ieee80211_mgd_stop(struct ieee80211_sub_if_data *sdata)
 	sdata_lock(sdata);
 	if (ifmgd->assoc_data) {
 		struct cfg80211_bss *bss = ifmgd->assoc_data->bss;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 78))
-			struct cfg80211_assoc_failure data = {
-				.timeout = true,
-				.bss[0] = bss,
-			};
-			ieee80211_destroy_assoc_data(sdata, false, false);
-			cfg80211_assoc_failure(sdata->dev, &data);
-#else
-			ieee80211_destroy_assoc_data(sdata, false, false);
-			cfg80211_assoc_timeout(sdata->dev, bss);
-#endif
+		ieee80211_destroy_assoc_data(sdata, false, false);
+		cfg80211_assoc_timeout(sdata->dev, bss);
 	}
 	if (ifmgd->auth_data)
 		ieee80211_destroy_auth_data(sdata, false);

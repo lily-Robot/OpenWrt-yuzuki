@@ -54,11 +54,6 @@
 #define PS_SP_INTERRUPTED  255
 #define MAC_ADDR_LEN 6
 
-#ifdef CONFIG_AUTO_CUSTREG
-#define MAX_SEARCH_CNT    3
-#endif
-
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
 #define IEEE80211_MAX_AMPDU_BUF                             IEEE80211_MAX_AMPDU_BUF_HE
 #define IEEE80211_HE_PHY_CAP6_TRIG_MU_BEAMFORMER_FB         IEEE80211_HE_PHY_CAP6_TRIG_MU_BEAMFORMING_PARTIAL_BW_FB
@@ -227,6 +222,13 @@ struct rwnx_vif {
 			bool external_auth;  /* Indicate if external authentication is in progress */
 			u32 group_cipher_type;
 			u32 paired_cipher_type;
+			//connected network info start
+			char ssid[33];//ssid max is 32, but this has one spare for '\0'
+			int ssid_len;
+			u8 bssid[ETH_ALEN];
+			u32 conn_owner_nlportid;
+			bool is_roam;
+			//connected network info end
 		} sta;
 		struct {
 			u16 flags;                 /* see rwnx_ap_flags */
@@ -437,6 +439,7 @@ struct defrag_ctrl_info {
 	u16 frm_len;
 	struct sk_buff *skb;
 	struct timer_list defrag_timer;
+	struct rwnx_hw *rwnx_hw;
 };
 
 struct amsdu_subframe_hdr {
@@ -564,6 +567,7 @@ struct rwnx_hw {
 #ifdef CONFIG_SCHED_SCAN
 	bool is_sched_scan;
 #endif
+	bool irq_enable;
 };
 
 u8 *rwnx_build_bcn(struct rwnx_bcn *bcn, struct cfg80211_beacon_data *new);

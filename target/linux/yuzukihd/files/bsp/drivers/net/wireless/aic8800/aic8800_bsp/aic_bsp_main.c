@@ -21,7 +21,7 @@
 #define DRV_TYPE_NAME   "compatible(unknow)"
 #endif
 
-#define DRV_RELEASE_DATE "20230913"
+#define DRV_RELEASE_DATE "20231031"
 #define DRV_PATCH_LEVEL  "000"
 #define DRV_RELEASE_TAG  "aic-bsp-" DRV_TYPE_NAME "-" DRV_RELEASE_DATE "-" DRV_PATCH_LEVEL
 
@@ -35,7 +35,6 @@ struct aicbsp_info_t aicbsp_info = {
 	.cpmode   = AICBSP_CPMODE_DEFAULT,
 	.sdio_clock = -1,
 	.sdio_phase = -1,
-	.irqf     = AIC_IRQ_WAKE_FLAG,
 };
 
 struct mutex aicbsp_power_lock;

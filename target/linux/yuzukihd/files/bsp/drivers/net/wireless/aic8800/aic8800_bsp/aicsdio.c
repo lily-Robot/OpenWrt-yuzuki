@@ -249,8 +249,6 @@ static int aicbsp_sdio_probe(struct sdio_func *func,
 			aicbsp_info.sdio_clock = min(host->f_max, AIC_SDIO_V3_CLOCK);
 		if (aicbsp_info.sdio_phase < 0)
 			aicbsp_info.sdio_phase = AIC_SDIO_V3_PHASE;
-		if (aicbsp_info.irqf < 0)
-			aicbsp_info.irqf = AIC_IRQ_WAKE_FLAG;
 		err = aicwf_sdiov3_func_init(aicdev);
 	}
 
@@ -1614,6 +1612,7 @@ static int aicwf_sdiov3_func_init(struct priv_dev *aicdev)
 	struct mmc_host *host;
 	u8 byte_mode_disable = 0x1;//1: no byte mode
 	int ret = 0;
+	//u8 val;
 	struct aicbsp_feature_t feature;
 
 	aicbsp_get_feature(&feature);
@@ -1641,6 +1640,26 @@ static int aicwf_sdiov3_func_init(struct priv_dev *aicdev)
 		sdio_release_host(aicdev->func[0]);
 		return ret;
 	}
+#if 0
+	if (host->ios.timing == MMC_TIMING_UHS_DDR50) {
+		val = 0x21;//0x1D;//0x5;
+	} else {
+		val = 0x01;//0x19;//0x1;
+	}
+	val |= SDIOCLK_FREE_RUNNING_BIT;
+	sdio_f0_writeb(aicdev->func[0], val, 0xF0, &ret);
+	if (ret) {
+		bsp_err("set iopad ctrl fail %d\n", ret);
+		sdio_release_host(aicdev->func[0]);
+		return ret;
+	}
+	sdio_f0_writeb(aicdev->func[0], 0x0, 0xF8, &ret);
+	if (ret) {
+		bsp_err("set iopad delay2 fail %d\n", ret);
+		sdio_release_host(aicdev->func[0]);
+		return ret;
+	}
+#endif
 	sdio_f0_writeb(aicdev->func[0], 0x80, 0xF1, &ret);
 	if (ret) {
 		bsp_err("set iopad delay1 fail %d\n", ret);
@@ -1648,7 +1667,7 @@ static int aicwf_sdiov3_func_init(struct priv_dev *aicdev)
 		return ret;
 	}
 	msleep(1);
-#if 1 // SDIO CLOCK SETTING
+#if 0//SDIO CLOCK SETTING
 	if ((feature.sdio_clock > 0) && (host->ios.timing != MMC_TIMING_UHS_DDR50)) {
 		host->ios.clock = feature.sdio_clock;
 		host->ops->set_ios(host, &host->ios);

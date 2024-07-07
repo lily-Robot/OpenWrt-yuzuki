@@ -364,7 +364,7 @@ static void keep_alive_send(struct ieee80211_local *local, struct net_device *de
 
 
 static int
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 70))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 13, 0))
 keep_alive_cmp(void *priv, const struct list_head *a, const struct list_head *b)
 #else
 keep_alive_cmp(void *priv, struct list_head *a, struct list_head *b)

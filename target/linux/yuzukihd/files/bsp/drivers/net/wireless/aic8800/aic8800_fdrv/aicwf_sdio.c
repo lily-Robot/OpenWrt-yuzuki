@@ -189,18 +189,18 @@ static int rwnx_register_hostwake_irq(struct device *dev)
 	int irq_flags;
 	int wakeup_enable;
 	u32 hostwake_irq_num;
-	unsigned long flag_edge;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
 	hostwake_irq_num = sunxi_wlan_get_oob_irq(&irq_flags, &wakeup_enable);
 #else
 	hostwake_irq_num = sunxi_wlan_get_oob_irq();
 	irq_flags = sunxi_wlan_get_oob_irq_flags();
-	wakeup_enable = 1;
-#endif
-	if (aicwf_feature.irqf == 0)
-		flag_edge = IRQF_TRIGGER_RISING | IRQF_NO_SUSPEND;
+	struct device_node *np = dev->of_node;
+	ret = of_property_read_u32(np, "wakeup-source", &wakeup_enable);
+	if(ret)
+		wakeup_enable = 0;
 	else
-		flag_edge = IRQF_TRIGGER_FALLING | IRQF_NO_SUSPEND;
+		wakeup_enable = 1;
+#endif
 
 	if (wakeup_enable) {
 		ret = device_init_wakeup(dev, true);
@@ -215,7 +215,9 @@ static int rwnx_register_hostwake_irq(struct device *dev)
 			goto fail1;
 		}
 
-		ret = request_irq(hostwake_irq_num, rwnx_hostwake_irq_handler, flag_edge, "rwnx_hostwake_irq", NULL);
+		ret = request_irq(hostwake_irq_num,
+				rwnx_hostwake_irq_handler, IRQF_TRIGGER_RISING | IRQF_NO_SUSPEND,
+				"rwnx_hostwake_irq", NULL);
 
 		if (ret < 0) {
 			pr_err("%s(%d): request_irq fail! ret = %d\n", __func__, __LINE__, ret);
@@ -226,7 +228,7 @@ static int rwnx_register_hostwake_irq(struct device *dev)
 	g_rwnx_plat->sdiodev->rwnx_hw->hostwake_irq_num = hostwake_irq_num;
 
 	sdio_info("%s(%d)\n", __func__, __LINE__);
-	return ret;
+	return 0;
 
 fail2:
 	dev_pm_clear_wake_irq(dev);
@@ -282,7 +284,6 @@ static int aicwf_sdio_probe(struct sdio_func *func,
 	bus_if->bus_priv.sdio = sdiodev;
 	dev_set_drvdata(&func->dev, bus_if);
 	sdiodev->dev = &func->dev;
-	host->ops->enable_sdio_irq(host, false);
 
 #ifdef AICWF_BSP_CTRL
 	aicbsp_get_feature(&aicwf_feature);
@@ -316,8 +317,6 @@ static int aicwf_sdio_probe(struct sdio_func *func,
 	err = aicwf_rwnx_sdio_platform_init(sdiodev);
 	if (err != 0)
 		goto init_hostif_fail;
-
-	host->ops->enable_sdio_irq(host, true);
 
 	err = rwnx_register_hostwake_irq(sdiodev->dev);
 	if (err != 0)
@@ -386,20 +385,11 @@ static int aicwf_sdio_suspend(struct device *dev)
 	struct aic_sdio_dev *sdiodev = bus_if->bus_priv.sdio;
 	mmc_pm_flag_t sdio_flags;
 	struct rwnx_vif *rwnx_vif, *tmp;
-	int cnt = 0;
 
 	sdio_dbg("%s Enter\n", __func__);
 	list_for_each_entry_safe(rwnx_vif, tmp, &sdiodev->rwnx_hw->vifs, list) {
 		if (rwnx_vif->ndev)
 			netif_device_detach(rwnx_vif->ndev);
-	}
-
-	while (&sdiodev->rwnx_hw->scan_request && scanning) {
-		printk("wait scan_cfm\n");
-		msleep(30);
-		cnt += 1;
-		if (cnt >= 50)
-			break;
 	}
 
 	sdio_flags = sdio_get_host_pm_caps(sdiodev->func);
@@ -1305,6 +1295,11 @@ void aicwf_sdio_hal_irqhandler(struct sdio_func *func)
 	int ret;
 	int retry = 10;
 
+	if ((sdiodev->rwnx_hw) == NULL || (sdiodev->rwnx_hw->irq_enable) != true) {
+		sdio_err("waiting for rwnx_hw->irq_enable is true\r\n");
+		return;
+	}
+
 	rwnx_wakeup_lock(sdiodev->rwnx_hw->ws_irqrx);
 
 	if (!bus_if || bus_if->state == BUS_DOWN_ST) {
@@ -1312,6 +1307,7 @@ void aicwf_sdio_hal_irqhandler(struct sdio_func *func)
 		rwnx_wakeup_unlock(sdiodev->rwnx_hw->ws_irqrx);
 		return;
 	}
+#if 1
 	if (sdiodev->rwnx_hw->chipid == PRODUCT_ID_AIC8800D || sdiodev->rwnx_hw->chipid == PRODUCT_ID_AIC8800DC ||
 		sdiodev->rwnx_hw->chipid == PRODUCT_ID_AIC8800DW) {
 		ret = aicwf_sdio_readb(sdiodev, sdiodev->sdio_reg.block_cnt_reg, &intstatus);
@@ -1407,6 +1403,68 @@ void aicwf_sdio_hal_irqhandler(struct sdio_func *func)
 		}
 	}
 	rwnx_wakeup_unlock(sdiodev->rwnx_hw->ws_irqrx);
+#else
+	while (1) {
+		do {
+			ret = aicwf_sdio_readb(sdiodev, sdiodev->sdio_reg.misc_int_status_reg, &intstatus);
+			if (!ret) {
+				break;
+			}
+			sdio_err("ret=%d, intstatus=%x\r\n",ret, intstatus);
+		} while (1);
+		if (intstatus & SDIO_OTHER_INTERRUPT) {
+			u8 int_pending;
+			ret = aicwf_sdio_readb(sdiodev, sdiodev->sdio_reg.sleep_reg, &int_pending);
+			if (ret < 0) {
+				sdio_err("reg:%d read failed!\n", sdiodev->sdio_reg.sleep_reg);
+			}
+			int_pending &= ~0x01; // dev to host soft irq
+			ret = aicwf_sdio_writeb(sdiodev, sdiodev->sdio_reg.sleep_reg, int_pending);
+			if (ret < 0) {
+				sdio_err("reg:%d write failed!\n", sdiodev->sdio_reg.sleep_reg);
+			}
+		}
+
+		if (intstatus > 0) {
+			uint8_t intmaskf2 = intstatus | (0x1UL << 3);
+			if (intmaskf2 > 120U) { // func2
+				if (intmaskf2 == 127U) { // byte mode
+					//aicwf_sdio_intr_get_len_bytemode(sdiodev, &byte_len, 1);//byte_len must<= 128
+					aicwf_sdio_intr_get_len_bytemode(sdiodev, &byte_len);//byte_len must<= 128
+					sdio_info("byte mode len=%d\r\n", byte_len);
+					//pkt = aicwf_sdio_readframes(sdiodev, 1);
+					pkt = aicwf_sdio_readframes(sdiodev);
+				} else { // block mode
+					sdiodev->rx_priv->data_len = (intstatus & 0x7U) * SDIOWIFI_FUNC_BLOCKSIZE;
+					//pkt = aicwf_sdio_readframes(sdiodev, 1);
+					pkt = aicwf_sdio_readframes(sdiodev);
+				}
+			} else { // func1
+				if (intstatus == 120U) { // byte mode
+					//aicwf_sdio_intr_get_len_bytemode(sdiodev, &byte_len, 0);//byte_len must<= 128
+					aicwf_sdio_intr_get_len_bytemode(sdiodev, &byte_len);//byte_len must<= 128
+					sdio_info("byte mode len=%d\r\n", byte_len);
+					//pkt = aicwf_sdio_readframes(sdiodev, 0);
+					pkt = aicwf_sdio_readframes(sdiodev);
+				} else { // block mode
+					sdiodev->rx_priv->data_len = (intstatus & 0x7FU) * SDIOWIFI_FUNC_BLOCKSIZE;
+					//pkt = aicwf_sdio_readframes(sdiodev, 0);
+					pkt = aicwf_sdio_readframes(sdiodev);
+				}
+			}
+		} else {
+			break;
+		#ifndef CONFIG_PLATFORM_ALLWINNER
+			sdio_err("Interrupt but no data\n");
+		#endif
+		}
+
+		if (pkt)
+			aicwf_sdio_enq_rxpkt(sdiodev, pkt);
+	}
+
+			complete(&bus_if->busrx_trgg);
+#endif
 }
 
 #if defined(CONFIG_SDIO_PWRCTRL)
@@ -1598,6 +1656,7 @@ int aicwf_sdiov3_func_init(struct aic_sdio_dev *sdiodev)
 	u8 byte_mode_disable = 0x1;//1: no byte mode
 	int ret = 0;
 	struct aicbsp_feature_t feature;
+	//u8 val = 0;
 	u8 val1 = 0;
 
 	feature = aicwf_feature;
@@ -1627,6 +1686,26 @@ int aicwf_sdiov3_func_init(struct aic_sdio_dev *sdiodev)
 		sdio_release_host(sdiodev->func);
 		return ret;
 	}
+#if 0
+	if (host->ios.timing == MMC_TIMING_UHS_DDR50) {
+		val = 0x21;//0x1D;//0x5;
+	} else {
+		val = 0x01;//0x19;//0x1;
+	}
+	val |= SDIOCLK_FREE_RUNNING_BIT;
+	sdio_f0_writeb(sdiodev->func, val, 0xF0, &ret);
+	if (ret) {
+		sdio_err("set iopad ctrl fail %d\n", ret);
+		sdio_release_host(sdiodev->func);
+		return ret;
+	}
+	sdio_f0_writeb(sdiodev->func, 0x0, 0xF8, &ret);
+	if (ret) {
+		sdio_err("set iopad delay2 fail %d\n", ret);
+		sdio_release_host(sdiodev->func);
+		return ret;
+	}
+#endif
 
 	sdio_f0_writeb(sdiodev->func, 0x80, 0xF1, &ret);
 	if (ret) {
@@ -1635,12 +1714,13 @@ int aicwf_sdiov3_func_init(struct aic_sdio_dev *sdiodev)
 		return ret;
 	}
 	msleep(1);
+#if 0//SDIO CLOCK SETTING
 	if ((feature.sdio_clock > 0) && (host->ios.timing != MMC_TIMING_UHS_DDR50)) {
 		host->ios.clock = feature.sdio_clock;
 		host->ops->set_ios(host, &host->ios);
 		sdio_info("Set SDIO Clock %d MHz\n", host->ios.clock/1000000);
 	}
-
+#endif
 	sdio_release_host(sdiodev->func);
 
 	//1: no byte mode

@@ -739,7 +739,6 @@ int aicbsp_get_feature(struct aicbsp_feature_t *feature)
 	feature->sdio_phase = aicbsp_info.sdio_phase;
 	feature->hwinfo     = aicbsp_info.hwinfo;
 	feature->fwlog_en   = aicbsp_info.fwlog_en;
-	feature->irqf       = aicbsp_info.irqf;
 
 	return 0;
 }

@@ -384,7 +384,6 @@ enum aicdev_hw_feature {
 #define AIC_SDIO_V2_PHASE           2          // 0: default, 2: 180°
 #define AIC_SDIO_V3_CLOCK           208000000U // 0: default, other: target clock rate
 #define AIC_SDIO_V3_PHASE           0x30       // 0: default
-#define AIC_IRQ_WAKE_FLAG           1          // 0: rising edge, 1: falling edge
 
 struct aicbt_patch_table {
 	char     *name;
@@ -434,7 +433,6 @@ struct aicbsp_info_t {
 	int32_t sdio_clock;
 	int32_t sdio_phase;
 	uint8_t btpcm;
-	uint8_t irqf;
 };
 
 int aicbsp_8800d_fw_init(struct priv_dev *aicdev);

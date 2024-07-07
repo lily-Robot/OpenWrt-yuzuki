@@ -64,7 +64,7 @@ CONFIG_WPA3_FOR_OLD_KERNEL ?= n
 CONFIG_SCHED_SCAN = n
 CONFIG_RX_NETIF_RECV_SKB = y
 CONFIG_OOB = n
-CONFIG_AUTO_CUSTREG = y
+CONFIG_AMSDU_RX ?=n
 
 # Support of MU-MIMO transmission (need FW support)
 ifeq ($(CONFIG_RWNX_BFMER), y)
@@ -108,8 +108,7 @@ aic8800_fdrv-y := \
 	rwnx_v7.o              \
 	ipc_host.o             \
 	rwnx_tdls.o            \
-	aic_vendor.o           \
-	regdb.o
+	aic_vendor.o
 
 aic8800_fdrv-$(CONFIG_RWNX_RADAR)       += rwnx_radar.o
 aic8800_fdrv-$(CONFIG_DEBUG_FS)         += rwnx_debugfs.o
@@ -162,6 +161,8 @@ ccflags-$(CONFIG_ROM_PATCH_EN) += -DCONFIG_ROM_PATCH_EN
 ccflags-$(CONFIG_PLATFORM_ALLWINNER) += -DCONFIG_COEX
 ccflags-$(CONFIG_PLATFORM_NANOPI_M4) += -DCONFIG_COEX
 
+ccflags-$(CONFIG_AW_KERNEL_AOSP) += -DKERNEL_AOSP
+
 SRCPATH := $(shell dirname $(lastword $(MAKEFILE_LIST)))
 
 ccflags-y += -DCONFIG_RWNX_FULLMAC
@@ -183,7 +184,6 @@ ccflags-$(CONFIG_WPA3_FOR_OLD_KERNEL) += -DCONFIG_WPA3_FOR_OLD_KERNEL
 ccflags-$(CONFIG_SCHED_SCAN) += -DCONFIG_SCHED_SCAN
 ccflags-$(CONFIG_RX_NETIF_RECV_SKB) += -DCONFIG_RX_NETIF_RECV_SKB
 ccflags-$(CONFIG_OOB) += -DCONFIG_OOB
-ccflags-$(CONFIG_AUTO_CUSTREG) += -DCONFIG_AUTO_CUSTREG
 
 ccflags-$(CONFIG_AIC_BSP_CTRL) += -DAICWF_BSP_CTRL
 ccflags-$(CONFIG_SDIO_SUPPORT) += -DAICWF_SDIO_SUPPORT
@@ -216,3 +216,4 @@ ccflags-$(CONFIG_RADAR_DETECT) += -DRADAR_OR_IR_DETECT
 ccflags-$(CONFIG_DOWNLOAD_FW)  += -DCONFIG_DOWNLOAD_FW
 ccflags-$(CONFIG_USB_BT)  += -DCONFIG_USB_BT
 ccflags-$(CONFIG_USB_MSG_EP) += -DCONFIG_USB_MSG_EP
+ccflags-$(CONFIG_AMSDU_RX) += -DCONFIG_AMSDU_RX

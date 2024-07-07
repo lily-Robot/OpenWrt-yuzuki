@@ -1905,6 +1905,7 @@ static void rwnx_rc_stat_work(struct work_struct *ws)
 
 	} else {
 		/* unregister the sta */
+		spin_lock_bh(&rwnx_hw->cb_lock);
 		if (sta->stats.rx_rate.table) {
 			kfree(sta->stats.rx_rate.table);
 			sta->stats.rx_rate.table = NULL;
@@ -1912,6 +1913,7 @@ static void rwnx_rc_stat_work(struct work_struct *ws)
 		sta->stats.rx_rate.size = 0;
 		sta->stats.rx_rate.cpt  = 0;
 		sta->stats.rx_rate.rate_cnt = 0;
+		spin_unlock_bh(&rwnx_hw->cb_lock);
 
 		/* If fix rate was set for this station, save the configuration in case
 		   we reconnect to this station within RC_CONFIG_DUR msec */

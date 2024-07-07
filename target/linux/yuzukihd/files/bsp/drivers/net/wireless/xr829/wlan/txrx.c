@@ -2352,13 +2352,15 @@ void xradio_tx_confirm_cb(struct xradio_common *hw_priv,
 				}
 			}
 
+			/*
 			if ((!arg->status) && (!IsFind)) {
 				if (!IsBreak)
-					BreakIdx = 3;
+					BreakIdx = 4;
 
 				xradio_get_ieee80211_tx_rate(hw_priv, arg->txedRateEntry, &tx->status.rates[BreakIdx]);
 				tx->status.rates[BreakIdx].count = 1;
 			}
+			*/
 		}
 
 #else

@@ -421,7 +421,7 @@ static struct recv_msdu *aicwf_rxframe_queue_init(struct list_head *q, int qsize
 	for (i = 0; i < qsize; i++) {
 		INIT_LIST_HEAD(&req->rxframe_list);
 		list_add(&req->rxframe_list, q);
-		req->len = 0;
+		//req->len = 0;
 		req++;
 	}
 

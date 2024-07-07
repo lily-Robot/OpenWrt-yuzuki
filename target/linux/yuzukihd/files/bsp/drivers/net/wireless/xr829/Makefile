@@ -6,7 +6,7 @@ CONFIG_XRMAC_RC_MINSTREL_HT = y
 CONFIG_XRMAC_DEBUGFS = n
 CONFIG_XRADIO_SDIO = y
 CONFIG_XRADIO_NON_POWER_OF_TWO_BLOCKSIZES = y
-CONFIG_XRADIO_USE_GPIO_IRQ = y
+CONFIG_XRADIO_USE_GPIO_IRQ = n
 CONFIG_XRADIO_SUSPEND_POWER_OFF := $(CONFIG_XR829_SUSPEND_POWER_OFF)
 CONFIG_XRADIO_EXTEND_SUSPEND = n
 CONFIG_XRADIO_NOMAL_SUSPEND_FORCE = n
@@ -123,7 +123,6 @@ rc80211_minstrel_ht-$(CONFIG_XRMAC_DEBUGFS) += umac/rc80211_minstrel_ht_debugfs.
 xradio_mac-$(CONFIG_XRMAC_RC_MINSTREL) += $(rc80211_minstrel-y)
 xradio_mac-$(CONFIG_XRMAC_RC_MINSTREL_HT) += $(rc80211_minstrel_ht-y)
 
-ccflags-y += -Wno-implicit-fallthrough
 ccflags-y += -D__CHECK_ENDIAN__
 # Extra IE for probe response from upper layer is needed in P2P GO
 # For offloading probe response to FW, the extra IE must be included
@@ -203,7 +202,6 @@ ccflags-y += -DIPV6_FILTERING
 ccflags-y += -DTES_P2P_0002_ROC_RESTART
 ccflags-y += -DTES_P2P_000B_EXTEND_INACTIVITY_CNT
 ccflags-y += -DTES_P2P_000B_DISABLE_EAPOL_FILTER
-ccflags-y += -DP2P_FOCE_JOIN_ENABLE
 
 ## for chips.
 ccflags-y += -DSUPPORT_HT40

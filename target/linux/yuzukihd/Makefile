@@ -4,15 +4,12 @@
 
 include $(TOPDIR)/rules.mk
 
-ARCH:=arm
 BOARD:=yuzukihd
 BOARDNAME:=YuzukiHD Boards
 FEATURES:=audio gpio usb usbgadget squashfs targz nand boot-part rootfs-part
-SUBTARGETS:=v851se
+SUBTARGETS:=v851se h616
 
 KERNEL_PATCHVER:=5.15
-
-KERNELNAME:=zImage dtbs
 
 include $(INCLUDE_DIR)/target.mk
 

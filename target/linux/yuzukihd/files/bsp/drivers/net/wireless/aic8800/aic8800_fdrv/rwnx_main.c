@@ -749,9 +749,9 @@ static void rwnx_csa_finish(struct work_struct *ws)
 		} else
 			rwnx_txq_vif_stop(vif, RWNX_TXQ_STOP_CHAN, rwnx_hw);
 		spin_unlock_bh(&rwnx_hw->cb_lock);
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 94))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 94)) && defined(KERNEL_AOSP)
 		cfg80211_ch_switch_notify(vif->ndev, &csa->chandef, 0, 0);
-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0))
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)) && defined(KERNEL_AOSP)
 		cfg80211_ch_switch_notify(vif->ndev, &csa->chandef, 0);
 #else
 		cfg80211_ch_switch_notify(vif->ndev, &csa->chandef);
@@ -859,8 +859,20 @@ static int rwnx_open(struct net_device *dev)
 	struct mm_add_if_cfm add_if_cfm;
 	int error = 0;
 	u8 rwnx_rx_gain = 0x0E;
+	int err = 0;
+	int waiting_counter = 10;
 
 	RWNX_DBG(RWNX_FN_ENTRY_STR);
+
+	while(test_bit(RWNX_DEV_STARTED, &rwnx_hw->drv_flags)){
+		msleep(100);
+		printk("%s waiting for rwnx_close \r\n", __func__);
+		waiting_counter--;
+		if(waiting_counter == 0){
+			printk("%s error waiting for close time out \r\n", __func__);
+			break;
+		}
+	}
 
 	// Check if it is the first opened VIF
 	if (rwnx_hw->vif_started == 0) {
@@ -893,15 +905,15 @@ static int rwnx_open(struct net_device *dev)
 	if (RWNX_VIF_TYPE(rwnx_vif) == NL80211_IFTYPE_P2P_CLIENT || RWNX_VIF_TYPE(rwnx_vif) == NL80211_IFTYPE_P2P_GO) {
 		if (!rwnx_hw->is_p2p_alive) {
 			if (rwnx_hw->p2p_dev_vif && !rwnx_hw->p2p_dev_vif->up) {
-				printk("add p2p dev if\n");
-				error = rwnx_send_add_if(rwnx_hw, rwnx_hw->p2p_dev_vif->wdev.address,
-										 RWNX_VIF_TYPE(rwnx_hw->p2p_dev_vif),
-										 false, &add_if_cfm);
-				if (error)
-					return error;
-
-				if (add_if_cfm.status != 0)
+				err = rwnx_send_add_if (rwnx_hw, rwnx_hw->p2p_dev_vif->wdev.address,
+											  RWNX_VIF_TYPE(rwnx_hw->p2p_dev_vif), false, &add_if_cfm);
+				if (err) {
 					return -EIO;
+				}
+
+				if (add_if_cfm.status != 0) {
+					return -EIO;
+				}
 
 				/* Save the index retrieved from LMAC */
 				spin_lock_bh(&rwnx_hw->cb_lock);
@@ -990,8 +1002,23 @@ static int rwnx_close(struct net_device *dev)
 	struct aic_sdio_dev *sdiodev = NULL;
 #else
 #endif
+	int waiting_counter = 20;
+	int test_counter = 0;
 
 	RWNX_DBG(RWNX_FN_ENTRY_STR);
+
+	test_counter = waiting_counter;
+	while(atomic_read(&rwnx_vif->drv_conn_state) == (int)RWNX_DRV_STATUS_DISCONNECTING||
+		atomic_read(&rwnx_vif->drv_conn_state) == (int)RWNX_DRV_STATUS_CONNECTING){
+		printk("%s wifi is connecting or disconnecting, waiting 200ms for state to stable\r\n", __func__);
+		msleep(200);
+		test_counter--;
+		if(test_counter == 0){
+			printk("%s connecting or disconnecting, not finish\r\n", __func__);
+			WARN_ON(1);
+			break;
+		}
+	}
 
 #if defined(AICWF_USB_SUPPORT) || defined(AICWF_SDIO_SUPPORT)
 	if (scanning) {
@@ -1062,11 +1089,19 @@ static int rwnx_close(struct net_device *dev)
 	}
 	if (sdiodev != NULL) {
 		if (sdiodev->bus_if->state != BUS_DOWN_ST) {
-			if (RWNX_VIF_TYPE(rwnx_vif) == NL80211_IFTYPE_STATION ||
-				RWNX_VIF_TYPE(rwnx_vif) == NL80211_IFTYPE_P2P_CLIENT) {
-				if (atomic_read(&rwnx_vif->drv_conn_state) == (int)RWNX_DRV_STATUS_CONNECTING) {
+			if(RWNX_VIF_TYPE(rwnx_vif) == NL80211_IFTYPE_STATION ||
+				RWNX_VIF_TYPE(rwnx_vif) == NL80211_IFTYPE_P2P_CLIENT){
+				test_counter= waiting_counter;
+				if(atomic_read(&rwnx_vif->drv_conn_state) == (int)RWNX_DRV_STATUS_CONNECTED){
+					atomic_set(&rwnx_vif->drv_conn_state, RWNX_DRV_STATUS_DISCONNECTING);
 					rwnx_send_sm_disconnect_req(rwnx_hw, rwnx_vif, 3);
-					atomic_set(&rwnx_vif->drv_conn_state, RWNX_DRV_STATUS_DISCONNECTED);
+					while (atomic_read(&rwnx_vif->drv_conn_state) == (int)RWNX_DRV_STATUS_DISCONNECTING) {
+						printk("%s wifi is disconnecting, waiting 100ms for state to stable\r\n", __func__);
+						msleep(100);
+						test_counter--;
+						if (test_counter ==0)
+							break;
+					}
 				}
 			}
 			rwnx_send_remove_if (rwnx_hw, rwnx_vif->vif_index, false);
@@ -2741,6 +2776,7 @@ static int rwnx_cfg80211_change_iface(struct wiphy *wiphy,
 	/* Abort scan request on the vif */
 	if (vif->rwnx_hw->scan_request &&
 		vif->rwnx_hw->scan_request->wdev == &vif->wdev) {
+#if 0
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 8, 0)
 			struct cfg80211_scan_info info = {
 				.aborted = true,
@@ -2756,6 +2792,12 @@ static int rwnx_cfg80211_change_iface(struct wiphy *wiphy,
 			return ret;
 		}
 		vif->rwnx_hw->scan_request = NULL;
+#else
+		if ((ret = rwnx_send_scanu_cancel_req(vif->rwnx_hw, NULL))) {
+			printk("scanu_cancel fail\n");
+			return ret;
+		}
+#endif
 	}
 	ret = rwnx_send_remove_if(vif->rwnx_hw, vif->vif_index, false);
 	if (ret) {
@@ -2859,6 +2901,7 @@ static int rwnx_cfg80211_scan(struct wiphy *wiphy,
 		return -EBUSY;
 
 	if ((int)atomic_read(&rwnx_vif->drv_conn_state) == (int)RWNX_DRV_STATUS_CONNECTING) {
+		printk("%s wifi is connecting, return it\r\n", __func__);
 		return -EBUSY;
 	}
 
@@ -2867,12 +2910,14 @@ static int rwnx_cfg80211_scan(struct wiphy *wiphy,
 		return -EBUSY;
 	}
 
+#if 1
 	if ((RWNX_VIF_TYPE(rwnx_vif) == NL80211_IFTYPE_STATION ||
 		RWNX_VIF_TYPE(rwnx_vif) == NL80211_IFTYPE_P2P_CLIENT) &&
 		rwnx_vif->sta.external_auth) {
 		printk("scan about: external auth\r\n");
 		return -EBUSY;
 	}
+#endif
 
 	rwnx_hw->scan_request = request;
 	error = rwnx_send_scanu_req(rwnx_hw, rwnx_vif, request);
@@ -2887,7 +2932,7 @@ static int rwnx_cfg80211_scan(struct wiphy *wiphy,
  *	when adding a group key.
  */
 static int rwnx_cfg80211_add_key(struct wiphy *wiphy, struct net_device *netdev,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 41))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 41)) && defined(KERNEL_AOSP)
 								 int link_id,
 #endif
 								 u8 key_index, bool pairwise, const u8 *mac_addr,
@@ -2982,7 +3027,7 @@ static int rwnx_cfg80211_add_key(struct wiphy *wiphy, struct net_device *netdev,
  *
  */
 static int rwnx_cfg80211_get_key(struct wiphy *wiphy, struct net_device *netdev,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 41))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 41)) && defined(KERNEL_AOSP)
 								 int link_id,
 #endif
 								 u8 key_index, bool pairwise, const u8 *mac_addr,
@@ -3000,7 +3045,7 @@ static int rwnx_cfg80211_get_key(struct wiphy *wiphy, struct net_device *netdev,
  *	and @key_index, return -ENOENT if the key doesn't exist.
  */
 static int rwnx_cfg80211_del_key(struct wiphy *wiphy, struct net_device *netdev,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 41))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 41)) && defined(KERNEL_AOSP)
 								 int link_id,
 #endif
 								 u8 key_index, bool pairwise, const u8 *mac_addr)
@@ -3037,7 +3082,7 @@ static int rwnx_cfg80211_del_key(struct wiphy *wiphy, struct net_device *netdev,
  */
 static int rwnx_cfg80211_set_default_key(struct wiphy *wiphy,
 										 struct net_device *netdev,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 41))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 41)) && defined(KERNEL_AOSP)
 										 int link_id,
 #endif
 										 u8 key_index, bool unicast, bool multicast)
@@ -3052,7 +3097,7 @@ static int rwnx_cfg80211_set_default_key(struct wiphy *wiphy,
  */
 static int rwnx_cfg80211_set_default_mgmt_key(struct wiphy *wiphy,
 											  struct net_device *netdev,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 41))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 41)) && defined(KERNEL_AOSP)
 											  int link_id,
 #endif
 											  u8 key_index)
@@ -3081,8 +3126,16 @@ static int rwnx_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 
 	RWNX_DBG(RWNX_FN_ENTRY_STR);
 
-	if ((int)atomic_read(&rwnx_vif->drv_conn_state) == (int)RWNX_DRV_STATUS_DISCONNECTING) {
-		printk("%s driver is disconnecting return it \r\n", __func__);
+	if((int)atomic_read(&rwnx_vif->drv_conn_state) == (int)RWNX_DRV_STATUS_CONNECTED) {
+		printk("%s this connection is roam \r\n", __func__);
+		rwnx_vif->sta.is_roam = true;
+	}else{
+		rwnx_vif->sta.is_roam = false; 
+	}
+
+	if((int)atomic_read(&rwnx_vif->drv_conn_state) == (int)RWNX_DRV_STATUS_DISCONNECTING||
+		(int)atomic_read(&rwnx_vif->drv_conn_state) == (int)RWNX_DRV_STATUS_CONNECTING) {
+		printk("%s driver is disconnecting or connecting ,return it \r\n", __func__);
 		return -EALREADY;
 	}
 
@@ -3124,7 +3177,7 @@ static int rwnx_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 		key_params.seq_len = 0;
 		key_params.cipher = sme->crypto.cipher_group;
 		rwnx_cfg80211_add_key(wiphy, dev,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 41))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 41)) && defined(KERNEL_AOSP)
 				0,
 #endif
 				sme->key_idx, false, NULL, &key_params);
@@ -3191,6 +3244,12 @@ static int rwnx_cfg80211_disconnect(struct wiphy *wiphy, struct net_device *dev,
 		msleep(500);
 	}
 
+	if(atomic_read(&rwnx_vif->drv_conn_state) == RWNX_DRV_STATUS_DISCONNECTING) {
+		printk("%s wifi is disconnecting, return it:%d \r\n",
+				__func__, reason_code);
+		return -EBUSY;
+	}
+
 	if (atomic_read(&rwnx_vif->drv_conn_state) == RWNX_DRV_STATUS_CONNECTED) {
 		atomic_set(&rwnx_vif->drv_conn_state, RWNX_DRV_STATUS_DISCONNECTING);
 		return rwnx_send_sm_disconnect_req(rwnx_hw, rwnx_vif, reason_code);
@@ -3198,6 +3257,7 @@ static int rwnx_cfg80211_disconnect(struct wiphy *wiphy, struct net_device *dev,
 		cfg80211_connect_result(dev,  NULL, NULL, 0, NULL, 0,
 				reason_code?reason_code:WLAN_STATUS_UNSPECIFIED_FAILURE, GFP_ATOMIC);
 		atomic_set(&rwnx_vif->drv_conn_state, RWNX_DRV_STATUS_DISCONNECTED);
+		rwnx_external_auth_disable(rwnx_vif);
 		return 0;
 	}
 }
@@ -3361,7 +3421,7 @@ static int rwnx_cfg80211_add_station(struct wiphy *wiphy, struct net_device *dev
 		sta->vif_idx = rwnx_vif->vif_index;
 		sta->vlan_idx = sta->vif_idx;
 		sta->qos = (params->sta_flags_set & BIT(NL80211_STA_FLAG_WME)) != 0;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 41)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 41) && defined(KERNEL_AOSP)
 		sta->ht = params->link_sta_params.ht_capa ? 1 : 0;
 		sta->vht = params->link_sta_params.vht_capa ? 1 : 0;
 #else
@@ -3737,7 +3797,7 @@ static int rwnx_cfg80211_change_station(struct wiphy *wiphy, struct net_device *
 				sta->vif_idx = rwnx_vif->vif_index;
 				sta->vlan_idx = sta->vif_idx;
 				sta->qos = (params->sta_flags_set & BIT(NL80211_STA_FLAG_WME)) != 0;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 41)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 41) && defined(KERNEL_AOSP)
 				sta->ht = params->link_sta_params.ht_capa ? 1 : 0;
 				sta->vht = params->link_sta_params.vht_capa ? 1 : 0;
 #else
@@ -3980,7 +4040,7 @@ static int rwnx_cfg80211_change_beacon(struct wiphy *wiphy, struct net_device *d
 /**
  * * @stop_ap: Stop being an AP, including stopping beaconing.
  */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)) && defined(KERNEL_AOSP)
 static int rwnx_cfg80211_stop_ap(struct wiphy *wiphy, struct net_device *dev, unsigned int link_id)
 #else
 static int rwnx_cfg80211_stop_ap(struct wiphy *wiphy, struct net_device *dev)
@@ -4417,7 +4477,7 @@ static int rwnx_cfg80211_dump_survey(struct wiphy *wiphy, struct net_device *net
  */
 static int rwnx_cfg80211_get_channel(struct wiphy *wiphy,
 									 struct wireless_dev *wdev,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) && defined(KERNEL_AOSP)
 									 unsigned int link_id,
 #endif
 									 struct cfg80211_chan_def *chandef)
@@ -5715,8 +5775,6 @@ static void rwnx_reg_notifier(struct wiphy *wiphy,
 {
 	struct rwnx_hw *rwnx_hw = wiphy_priv(wiphy);
 
-	printk("%s Enter\n", __func__);
-
 	// For now trust all initiator
 	rwnx_radar_set_domain(&rwnx_hw->radar, request->dfs_region);
 	rwnx_send_me_chan_config_req(rwnx_hw);
@@ -5884,6 +5942,8 @@ int rwnx_cfg80211_init(struct rwnx_plat *rwnx_plat, void **platform_data)
 
 	rwnx_hw->fwlog_en = feature.fwlog_en;
 	rwnx_hw->cpmode   = feature.cpmode;
+
+	rwnx_hw->irq_enable = true;
 
 #ifdef CONFIG_OOB
 	if (rwnx_hw->chipid == PRODUCT_ID_AIC8800D80) {
@@ -6165,6 +6225,7 @@ void rwnx_cfg80211_deinit(struct rwnx_hw *rwnx_hw)
 #endif
 		rwnx_send_set_stack_start_req(rwnx_hw, 0, 0, 0, 0, &set_start_cfm);
 
+	rwnx_hw->irq_enable = false;
 	rwnx_hw->fwlog_en = 0;
 	spin_lock_bh(&rwnx_hw->defrag_lock);
 	if (!list_empty(&rwnx_hw->defrag_list)) {

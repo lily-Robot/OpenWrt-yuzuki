@@ -2599,11 +2599,6 @@ void xradio_join_work(struct work_struct *work)
 		if (priv->vif->p2p) {
 			join.flags |= WSM_JOIN_FLAGS_P2P_GO;
 
-#ifdef P2P_FOCE_JOIN_ENABLE
-			join.flags |= WSM_JOIN_FLAGS_FORCE;
-			join.probeForJoin = 0;
-#endif
-
 #ifdef SUPPORT_HT40
 
 			join.PhyModeCfg.ModemFlags &= ~(MODEM_F_B_DSSS);

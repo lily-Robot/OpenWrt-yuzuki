@@ -2472,11 +2472,7 @@ static void ieee80211_deliver_skb_to_local_stack(struct sk_buff *skb,
 		struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
 		bool noencrypt = !(status->flag & RX_FLAG_DECRYPTED);
 
-		cfg80211_rx_control_port(dev, skb, noencrypt
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 104))
-					 , -1
-#endif
-					);
+		cfg80211_rx_control_port(dev, skb, noencrypt);
 		dev_kfree_skb(skb);
 	} else {
 		memset(skb->cb, 0, sizeof(skb->cb));

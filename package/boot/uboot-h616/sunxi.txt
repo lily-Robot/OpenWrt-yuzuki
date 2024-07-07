@@ -1,0 +1,4 @@
+verbosity=7
+bootlogo=false
+console=both
+fdtfile=sunxi.dtb

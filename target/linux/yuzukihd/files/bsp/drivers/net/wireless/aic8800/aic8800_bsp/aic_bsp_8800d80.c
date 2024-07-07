@@ -46,10 +46,9 @@ typedef struct {
 
 #if defined(AICWF_SDIO_SUPPORT)
 static u32 patch_tbl[][2] = {
-#if AIC_IRQ_WAKE_FLAG
-	{0x00000170, 0x0000010a}, //irqf
+#if defined(CONFIG_AMSDU_RX)
+	{0x0170, 0x0100000a},
 #endif
-	{0x00000174, 0x00010000}, //bt gpio down 6ms
 };
 
 static u32 aicbsp_syscfg_tbl[][2] = {

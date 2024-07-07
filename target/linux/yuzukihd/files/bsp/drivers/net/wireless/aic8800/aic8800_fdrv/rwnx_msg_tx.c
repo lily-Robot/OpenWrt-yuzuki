@@ -1500,7 +1500,7 @@ int rwnx_send_me_sta_add(struct rwnx_hw *rwnx_hw, struct station_parameters *par
 						 const u8 *mac, u8 inst_nbr, struct me_sta_add_cfm *cfm)
 {
 	struct me_sta_add_req *req;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 1)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 41) && defined(KERNEL_AOSP)
 	struct link_station_parameters *link_sta_params = &params->link_sta_params;
 #else
 	struct station_parameters *link_sta_params = params;
@@ -1828,6 +1828,19 @@ int rwnx_send_sm_connect_req(struct rwnx_hw *rwnx_hw,
 		rwnx_vif->last_auth_type = sme->auth_type;
 	}
 
+	rwnx_vif->sta.ssid_len = (int)sme->ssid_len;
+	memset(rwnx_vif->sta.ssid, 0, rwnx_vif->sta.ssid_len + 1);
+	memcpy(rwnx_vif->sta.ssid, sme->ssid, rwnx_vif->sta.ssid_len);
+	memcpy(rwnx_vif->sta.bssid, sme->bssid, ETH_ALEN);
+
+	printk("%s drv_vif_index:%d connect to %s(%d) channel:%d auth_type:%d\r\n",
+		__func__,
+		rwnx_vif->drv_vif_index,
+		rwnx_vif->sta.ssid,
+		rwnx_vif->sta.ssid_len,
+		req->chan.freq,
+		req->auth_type);
+
 	/* Send the SM_CONNECT_REQ message to LMAC FW */
 	return rwnx_send_msg(rwnx_hw, req, 1, SM_CONNECT_CFM, cfm);
 
@@ -2001,11 +2014,6 @@ uint8_t scanning;// = 0;
 #define P2P_WILDCARD_SSID                       "DIRECT-"
 #define P2P_WILDCARD_SSID_LEN                   (sizeof(P2P_WILDCARD_SSID) - 1)
 
-#ifdef CONFIG_AUTO_CUSTREG
-bool country_set;
-int cur_cnt;
-#endif
-
 int rwnx_send_scanu_req(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_vif,
 						struct cfg80211_scan_request *param)
 {
@@ -2028,16 +2036,7 @@ int rwnx_send_scanu_req(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_vif,
 	/* Set parameters */
 	req->vif_idx = rwnx_vif->vif_index;
 	req->chan_cnt = (u8)min_t(int, SCAN_CHANNEL_MAX, param->n_channels);
-
-#ifdef CONFIG_AUTO_CUSTREG
-	if (country_set || cur_cnt >= MAX_SEARCH_CNT)
-		req->ssid_cnt = (u8)min_t(int, SCAN_SSID_MAX, param->n_ssids);
-	else
-		req->ssid_cnt = (u8)min_t(int, 0, param->n_ssids);
-#else
 	req->ssid_cnt = (u8)min_t(int, SCAN_SSID_MAX, param->n_ssids);
-#endif
-
 	req->bssid = mac_addr_bcst;
 	req->no_cck = param->no_cck;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 8, 0)

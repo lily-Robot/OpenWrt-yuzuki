@@ -655,7 +655,11 @@ void rwnx_plat_userconfig_parsing(struct rwnx_hw *rwnx_hw, char *buffer, int siz
 
 #define FW_USERCONFIG_NAME_8800D    "aic_userconfig.txt"
 #define FW_USERCONFIG_NAME_8800DC   "aic8800dc/aic_userconfig_8800dc.txt"
-#define FW_USERCONFIG_NAME_8800D80  "aic8800d80/aic_userconfig_8800d80.txt"
+#ifdef CONFIG_HW_HT
+       #define FW_USERCONFIG_NAME_8800D80  "aic8800d80/aic_userconfig_8800d80-ht.txt"
+#else
+       #define FW_USERCONFIG_NAME_8800D80  "aic8800d80/aic_userconfig_8800d80.txt"
+#endif
 
 int rwnx_plat_userconfig_upload_android(struct rwnx_hw *rwnx_hw, char *filename)
 {
@@ -940,6 +944,7 @@ int rwnx_platform_on(struct rwnx_hw *rwnx_hw, void *config)
 	struct rwnx_plat *rwnx_plat = rwnx_hw->plat;
 	(void)ret;
 
+	pr_err("%s: %d fw=%s\n", __func__,__LINE__,FW_USERCONFIG_NAME_8800D80);
 	RWNX_DBG(RWNX_FN_ENTRY_STR);
 
 	if (rwnx_plat->enabled)

@@ -67,7 +67,6 @@ struct aicbsp_feature_t {
 	bool     fwlog_en;
 	struct device_match_entry *chipinfo;
 	uint8_t  cpmode;
-	uint8_t irqf;
 };
 
 int aicbsp_set_subsys(int, int);

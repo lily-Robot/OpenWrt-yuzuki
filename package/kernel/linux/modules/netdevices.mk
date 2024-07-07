@@ -1555,6 +1555,52 @@ endef
 
 $(eval $(call KernelPackage,lan743x))
 
+define KernelPackage/aic8800-wlan
+  SUBMENU:=$(NETWORK_DEVICES_MENU)
+  TITLE:=AIC8800 SDIO wireless module
+  KCONFIG:=CONFIG_AIC8800_WLAN_SUPPORT
+  FILES:= \
+         $(LINUX_DIR)/bsp/drivers/net/wireless/aic8800/aic8800_fdrv/aic8800_fdrv.ko \
+         $(LINUX_DIR)/bsp/drivers/net/wireless/aic8800/aic8800_bsp/aic8800_bsp.ko
+  AUTOLOAD:=$(call AutoProbe,aic8800_fdrv aic8800_bsp)
+endef
+
+define KernelPackage/aic8800-wlan/description
+  Kernel module for AIC8800 SDIO wireless module
+endef
+
+$(eval $(call KernelPackage,aic8800-wlan))
+
+define KernelPackage/aic8800-bt
+  SUBMENU:=$(NETWORK_DEVICES_MENU)
+  TITLE:=AIC8800 SDIO bluetooth module
+  KCONFIG:=CONFIG_AIC8800_BTLPM_SUPPORT
+  FILES:=$(LINUX_DIR)/bsp/drivers/net/wireless/aic8800/aic8800_btlpm/aic8800_btlpm.ko
+  AUTOLOAD:=$(call AutoProbe,aic8800_btlpm)
+endef
+
+define KernelPackage/aic8800-bt/description
+  Kernel module for AIC8800 SDIO bluetooth module
+endef
+
+$(eval $(call KernelPackage,aic8800-bt))
+
+define KernelPackage/xr829
+  SUBMENU:=$(NETWORK_DEVICES_MENU)
+  TITLE:=XR829 SDIO wireless module
+  KCONFIG:= \
+           CONFIG_XR829_WLAN \
+           CONFIG_XR829_SUSPEND_POWER_OFF
+  FILES:=$(LINUX_DIR)/bsp/drivers/net/wireless/xr829/xr829.ko
+  AUTOLOAD:=$(call AutoProbe,xr829)
+endef
+
+define KernelPackage/xr829/description
+  Kernel module for XR829 SDIO wireless module
+endef
+
+$(eval $(call KernelPackage,xr829))
+
 define KernelPackage/amazon-ena
   SUBMENU:=$(NETWORK_DEVICES_MENU)
   TITLE:=Elastic Network Adapter (for Amazon AWS)

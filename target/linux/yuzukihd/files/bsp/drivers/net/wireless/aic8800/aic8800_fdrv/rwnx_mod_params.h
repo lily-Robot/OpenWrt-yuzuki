@@ -13,19 +13,6 @@
 #ifndef _RWNX_MOD_PARAM_H_
 #define _RWNX_MOD_PARAM_H_
 
-#include <linux/module.h>
-#include <linux/rtnetlink.h>
-
-#include "rwnx_defs.h"
-#include "rwnx_tx.h"
-#include "hal_desc.h"
-//#include "rwnx_cfgfile.h"
-#include "rwnx_dini.h"
-#include "reg_access.h"
-#include "rwnx_compat.h"
-#include "aic_bsp_export.h"
-
-
 struct rwnx_mod_params {
 	bool ht_on;
 	bool vht_on;
@@ -78,8 +65,5 @@ int rwnx_handle_dynparams(struct rwnx_hw *rwnx_hw, struct wiphy *wiphy);
 void rwnx_custregd(struct rwnx_hw *rwnx_hw, struct wiphy *wiphy);
 void rwnx_enable_wapi(struct rwnx_hw *rwnx_hw);
 void rwnx_enable_mfp(struct rwnx_hw *rwnx_hw);
-void rwnx_get_countrycode_channels(struct wiphy *wiphy, struct ieee80211_regdomain *regdomain);
-struct ieee80211_regdomain *getRegdomainFromRwnxDB(struct wiphy *wiphy, char *alpha2);
-
 
 #endif /* _RWNX_MOD_PARAM_H_ */

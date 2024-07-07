@@ -9,7 +9,17 @@
 *
 ******************************************************************************
 */
-#include "rwnx_mod_params.h"
+#include <linux/module.h>
+#include <linux/rtnetlink.h>
+
+#include "rwnx_defs.h"
+#include "rwnx_tx.h"
+#include "hal_desc.h"
+#include "rwnx_cfgfile.h"
+#include "rwnx_dini.h"
+#include "reg_access.h"
+#include "rwnx_compat.h"
+#include "aic_bsp_export.h"
 
 #ifdef CONFIG_RWNX_FULLMAC
 #define COMMON_PARAM(name, default_softmac, default_fullmac)    \
@@ -44,7 +54,7 @@ struct rwnx_mod_params rwnx_mod_params = {
 	COMMON_PARAM(mutx, true, true)
 	COMMON_PARAM(mutx_on, true, true)
 	COMMON_PARAM(use_80, false, false)
-	COMMON_PARAM(custregd, true, true)
+	COMMON_PARAM(custregd, false, false)
 	COMMON_PARAM(custchan, false, false)
 	COMMON_PARAM(roc_dur_max, 500, 500)
 	COMMON_PARAM(listen_itv, 0, 0)
@@ -214,11 +224,6 @@ MODULE_PARM_DESC(ftl, "Firmware trace level  (Default: \"\")");
 module_param_named(dpsm, rwnx_mod_params.dpsm, bool, S_IRUGO);
 MODULE_PARM_DESC(dpsm, "Enable Dynamic PowerSaving (Default: 1-Enabled)");
 
-extern struct ieee80211_regdomain *reg_regdb[];
-
-char country_abbr[4] = "00";
-
-#if 0
 /* Regulatory rules */
 static struct ieee80211_regdomain rwnx_regdom = {
 	.n_reg_rules = 2,
@@ -228,79 +233,6 @@ static struct ieee80211_regdomain rwnx_regdom = {
 		REG_RULE(5150 - 10, 5970 + 10, 80, 0, 1000, 0),
 	}
 };
-#endif
-
-void rwnx_get_countrycode_channels(struct wiphy *wiphy, struct ieee80211_regdomain *regdomain)
-{
-	enum nl80211_band band;
-	struct ieee80211_supported_band *sband;
-	int channel_index;
-	int rule_index;
-	int band_num = 0;
-	int rule_num = regdomain->n_reg_rules;
-	int start_freq = 0;
-	int end_freq = 0;
-	int center_freq = 0;
-	char channel[4];
-	char ccode_channels[200];
-	int index_for_channel_list = 0;
-
-	band_num = NUM_NL80211_BANDS;
-
-	memset(ccode_channels, 0, 200);
-	index_for_channel_list = 0;
-
-	for (band = 0; band < band_num; band++) {
-		sband = wiphy->bands[band];// bands: 0:2.4G 1:5G 2:60G
-		if (!sband)
-			continue;
-
-		for (channel_index = 0; channel_index < sband->n_channels; channel_index++) {
-			for(rule_index = 0; rule_index < rule_num; rule_index++){
-				start_freq = regdomain->reg_rules[rule_index].freq_range.start_freq_khz/1000;
-				end_freq = regdomain->reg_rules[rule_index].freq_range.end_freq_khz/1000;
-				center_freq = sband->channels[channel_index].center_freq;
-				if((center_freq - 10) >= start_freq && (center_freq + 10) <= end_freq){
-					sprintf(channel, "%d",ieee80211_frequency_to_channel(center_freq));
-					memcpy(ccode_channels + index_for_channel_list, channel, strlen(channel));
-					index_for_channel_list += strlen(channel);
-					memcpy(ccode_channels + index_for_channel_list, " ", 1);
-					index_for_channel_list += 1;
-					break;
-				}
-			}
-		}
-	}
-	printk("%s support channel:%s\r\n", __func__, ccode_channels);
-}
-
-
-struct ieee80211_regdomain *getRegdomainFromRwnxDB(struct wiphy *wiphy, char *alpha2)
-{
-	u8 idx;
-
-	//memset(country_code, 0, 4);
-
-	printk("%s set ccode:%s \r\n", __func__, alpha2);
-	idx = 0;
-
-	while (reg_regdb[idx]){
-		if((reg_regdb[idx]->alpha2[0] == alpha2[0]) &&
-			(reg_regdb[idx]->alpha2[1] == alpha2[1])){
-			//memcpy(country_code, alpha2, 2);
-			rwnx_get_countrycode_channels(wiphy, reg_regdb[idx]);
-			return reg_regdb[idx];
-		}
-		idx++;
-	}
-
-	printk("%s: Set as default country = %s\n", __func__, alpha2);
-	//memcpy(country_code, default_ccode, sizeof(default_ccode));
-	rwnx_get_countrycode_channels(wiphy, reg_regdb[0]);
-
-	return reg_regdb[0];
-}
-
 
 static const int mcs_map_to_rate[4][3] = {
 	[PHY_CHNL_BW_20][IEEE80211_VHT_MCS_SUPPORT_0_7] = 65,
@@ -1274,8 +1206,7 @@ static void rwnx_set_wiphy_params(struct rwnx_hw *rwnx_hw, struct wiphy *wiphy)
 			   __func__);
 		wiphy->regulatory_flags |= REGULATORY_CUSTOM_REG;
 		wiphy->regulatory_flags |= REGULATORY_IGNORE_STALE_KICKOFF;
-		wiphy_apply_custom_regulatory(wiphy, getRegdomainFromRwnxDB(wiphy, country_abbr));
-		//wiphy_apply_custom_regulatory(wiphy, &rwnx_regdom);
+		wiphy_apply_custom_regulatory(wiphy, &rwnx_regdom);
 #endif
 		// Check if custom channel set shall be enabled. In such case only monitor mode is
 		// supported
@@ -1415,20 +1346,6 @@ void rwnx_custregd(struct rwnx_hw *rwnx_hw, struct wiphy *wiphy)
 	wiphy->regulatory_flags |= REGULATORY_WIPHY_SELF_MANAGED;
 
 	rtnl_lock();
-#ifdef CONFIG_AUTO_CUSTREG
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
-	if (regulatory_set_wiphy_regd_sync(wiphy, getRegdomainFromRwnxDB(wiphy, country_abbr)))
-		wiphy_err(wiphy, "Failed to set custom regdomain\n");
-#else
-	if (regulatory_set_wiphy_regd_sync_rtnl(wiphy, getRegdomainFromRwnxDB(wiphy, country_abbr)))
-		wiphy_err(wiphy, "Failed to set custom regdomain\n");
-#endif
-	else
-		wiphy_err(wiphy, "\n"
-				"*******************************************************\n"
-				"** CAUTION: USING PERMISSIVE CUSTOM REGULATORY RULES **\n"
-				"*******************************************************\n");
-#else
 	if (rwnx_regulatory_set_wiphy_regd_sync_rtnl(wiphy, &rwnx_regdom))
 		wiphy_err(wiphy, "Failed to set custom regdomain\n");
 	else
@@ -1436,7 +1353,6 @@ void rwnx_custregd(struct rwnx_hw *rwnx_hw, struct wiphy *wiphy)
 				  "*******************************************************\n"
 				  "** CAUTION: USING PERMISSIVE CUSTOM REGULATORY RULES **\n"
 				  "*******************************************************\n");
-#endif
 	 rtnl_unlock();
 #endif
 }
